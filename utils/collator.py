@@ -2,8 +2,7 @@ import torch
 from typing import Any, Dict, Optional, Sequence, List, Sequence, Tuple
 from transformers import DataCollatorWithPadding, BatchEncoding, DataCollatorForSeq2Seq
 from transformers.tokenization_utils import PreTrainedTokenizer
-
-IGNORE_INDEX = -100
+from .constant import IGNORE_INDEX
 
 
 class DataCollatorForChatGLM(DataCollatorWithPadding):
@@ -28,7 +27,8 @@ class DataCollatorForChatGLM(DataCollatorWithPadding):
         attention_mask = torch.ones((batch_size, seq_length), device=device)
 
         for i, seq in enumerate(input_ids):
-            attention_mask[i, :(seq != self.tokenizer.pad_token_id).nonzero()[0].item()] = 0 # padding
+            padding_length = (seq != self.tokenizer.pad_token_id).nonzero()[0].item()
+            attention_mask[i, :padding_length] = 0 # padding tokens are masked by 0
 
         return attention_mask
 
