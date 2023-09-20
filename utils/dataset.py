@@ -38,9 +38,10 @@ def preprocess_dataset(
         for i in range(len(examples["instruction"])):
             if examples["instruction"][i] and examples["output"][i]:
                 query, answer = examples["instruction"][i], examples["output"][i]
+                if examples["input"][i]:
+                    query = query + examples["input"][i]
                 prompt = ""
                 if examples.get("history", None) is not None:
-                    query = query + examples["input"][i] if examples["input"][i] else query
                     history = examples["history"][i] if examples["history"][i] else []
                     for j, (old_query, response) in enumerate(history):
                         prompt += "[Round {}]\n\n问：{}\n\n答：{}\n\n".format(j+1, old_query, response)

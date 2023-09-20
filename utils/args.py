@@ -48,18 +48,22 @@ class DataArguments:
         metadata={"help": "Overwrite the cached training and evaluation sets."}
     )
     model_max_length: int = field(
-        default=1024,
+        default=2048,
         metadata={
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         }
     )
     max_source_length: Optional[int] = field(
-        default=1024,
+        default=2048,
         metadata={"help": "The maximum total input sequence length after tokenization."}
     )
     max_target_length: Optional[int] = field(
-        default=1024,
+        default=2048,
         metadata={"help": "The maximum total output sequence length after tokenization."}
+    )
+    ignore_pad_token_for_loss: Optional[bool] = field(
+        default=True,
+        metadata={"help": "Whether to ignore the tokens corresponding to padded labels in the loss computation or not."}
     )
 
 

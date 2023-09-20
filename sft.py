@@ -43,7 +43,8 @@ def train():
         tokenizer, training_args, data_args
     )
     collator = DataCollatorForChatGLM(
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        ignore_pad_token_for_loss=(data_args.ignore_pad_token_for_loss and not training_args.predict_with_generate)
     )
 
     config = transformers.AutoConfig.from_pretrained(
