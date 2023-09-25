@@ -2,7 +2,7 @@ import torch
 from typing import Any, Dict, Optional, Sequence, List, Sequence, Tuple
 from transformers import DataCollatorWithPadding, BatchEncoding, DataCollatorForSeq2Seq
 from transformers.tokenization_utils import PreTrainedTokenizer
-from .constant import IGNORE_INDEX
+from .constants import IGNORE_INDEX
 
 
 class DataCollatorForChatGLM(DataCollatorWithPadding):

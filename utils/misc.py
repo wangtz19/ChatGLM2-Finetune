@@ -1,5 +1,5 @@
 import torch
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils.versions import require_version
 try:
@@ -8,7 +8,9 @@ except ImportError:
     from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers import BitsAndBytesConfig
 import os
-from .constant import LAYERNORM_NAMES
+from transformers.trainer import WEIGHTS_NAME, WEIGHTS_INDEX_NAME
+from transformers.modeling_utils import load_sharded_checkpoint
+from .constants import LAYERNORM_NAMES, VALUE_HEAD_FILE_NAME
 from .args import ModelArguments
 from .logging import get_logger
 
@@ -70,27 +72,41 @@ def prepare_model_for_training(
     return model
 
 
-def get_quantize_config(
-    model_args: ModelArguments,
-) -> PreTrainedModel:
-    config_kwargs = {}
-    if model_args.quantization_bit is not None:
-        if is_deepspeed_zero3_enabled():
-            raise ValueError("DeepSpeed ZeRO-3 is incompatible with quantization.")
+logger = get_logger(__name__)
 
-        if model_args.quantization_bit == 8:
-            require_version("bitsandbytes>=0.37.0", "To fix: pip install bitsandbytes>=0.37.0")
-            config_kwargs["load_in_8bit"] = True
-            config_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-        elif model_args.quantization_bit == 4:
-            require_version("bitsandbytes>=0.39.0", "To fix: pip install bitsandbytes>=0.39.0")
-            config_kwargs["load_in_4bit"] = True
-            config_kwargs["quantization_config"] = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=model_args.compute_dtype,
-                bnb_4bit_use_double_quant=model_args.double_quantization,
-                bnb_4bit_quant_type=model_args.quantization_type
-            )
-        config_kwargs["device_map"] = {"": int(os.environ.get("LOCAL_RANK", "0"))}
-        logger.info("Quantizing model to {} bit.".format(model_args.quantization_bit))
-    return config_kwargs
+
+def get_state_dict(model: torch.nn.Module, trainable_only: Optional[bool] = True) -> Dict[str, torch.Tensor]:
+    state_dict = model.state_dict()
+    filtered_state_dict = {}
+
+    for k, v in model.named_parameters():
+        if (not trainable_only) or v.requires_grad:
+            filtered_state_dict[k] = state_dict[k].cpu().clone().detach()
+
+    return filtered_state_dict
+
+
+def load_trainable_params(model: torch.nn.Module, checkpoint_dir: os.PathLike) -> bool:
+    weights_file = os.path.join(checkpoint_dir, WEIGHTS_NAME)
+    if os.path.exists(weights_file):
+        model_state_dict = torch.load(weights_file, map_location="cpu")
+        model.load_state_dict(model_state_dict, strict=False) # skip missing keys
+    elif os.path.exists(os.path.join(checkpoint_dir, WEIGHTS_INDEX_NAME)):
+        load_sharded_checkpoint(model, checkpoint_dir, strict=False)
+    else:
+        logger.warning("Provided path ({}) does not contain pre-trained weights.".format(checkpoint_dir))
+        return False
+    return True
+
+
+def load_valuehead_params(model: torch.nn.Module, checkpoint_dir: os.PathLike) -> bool:
+    valuehead_file = os.path.join(checkpoint_dir, VALUE_HEAD_FILE_NAME)
+    if not os.path.exists(valuehead_file):
+        logger.warning("Provided path ({}) does not contain valuehead weights.".format(checkpoint_dir))
+        return False
+    valuehead_state_dict = torch.load(valuehead_file, map_location="cpu")
+    model.register_buffer("reward_head_weight", valuehead_state_dict["summary.weight"])
+    model.register_buffer("reward_head_bias", valuehead_state_dict["summary.bias"])
+    model.register_buffer("default_head_weight", torch.zeros_like(valuehead_state_dict["summary.weight"]))
+    model.register_buffer("default_head_bias", torch.zeros_like(valuehead_state_dict["summary.bias"]))
+    return True

@@ -5,7 +5,7 @@ import torch
 from typing import Optional, Dict
 from transformers.tokenization_utils import PreTrainedTokenizer
 from .args import TrainingArguments, DataArguments
-from .constant import IGNORE_INDEX
+from .constants import IGNORE_INDEX
 
 # class PairwiseDataset(Dataset):
 #     """Dataset for dpo fine-tuning."""

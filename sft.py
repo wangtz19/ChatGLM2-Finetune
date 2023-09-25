@@ -1,6 +1,15 @@
 import torch
-import transformers
-from transformers import Seq2SeqTrainer
+from transformers import (
+    Seq2SeqTrainer, 
+    PretrainedConfig, 
+    PreTrainedModel, 
+    PreTrainedTokenizerBase,
+    AutoModel,
+    AutoConfig,
+    AutoTokenizer,
+    HfArgumentParser,
+)
+
 from peft import LoraConfig, TaskType, get_peft_model
 from utils import (
     DataCollatorForChatGLM, 
@@ -15,6 +24,7 @@ from utils import (
     postprocess_training_args,
     prepare_model_for_training,
     postprocess_model_args,
+    Seq2SeqTrainerForChatGLM
 )
 from pprint import pprint
 
@@ -23,21 +33,21 @@ logger = get_logger(__name__)
                                                             
 def train():
     
-    parser = transformers.HfArgumentParser(
+    parser = HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     training_args = postprocess_training_args(training_args)
     model_args = postprocess_model_args(model_args, training_args)
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
+    tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        use_fast=False,
+        use_fast=model_args.use_fast_tokenizer,
         trust_remote_code=True,
-        model_max_length=data_args.model_max_length,
+        # model_max_length=data_args.model_max_length,
         cache_dir=model_args.cache_dir,
+        padding_side="left",
     )
-    tokenizer.padding_side = "left"
 
     dataset = preprocess_dataset(
         tokenizer, training_args, data_args
@@ -47,22 +57,34 @@ def train():
         ignore_pad_token_for_loss=(data_args.ignore_pad_token_for_loss and not training_args.predict_with_generate)
     )
 
-    config = transformers.AutoConfig.from_pretrained(
+    config = AutoConfig.from_pretrained(
         model_args.model_name_or_path,
         trust_remote_code=True,
+        cache_dir=model_args.cache_dir,
     )
-    model = transformers.AutoModelForCausalLM.from_pretrained(
+    # model = transformers.AutoModelForCausalLM.from_pretrained(
+    model = AutoModel.from_pretrained(
         model_args.model_name_or_path,
         trust_remote_code=True,
         config=config,
-        torch_dtype=model_args.compute_dtype, # change precision if needed
+        # torch_dtype=model_args.compute_dtype, # change precision if needed
+        cache_dir=model_args.cache_dir,
     )
+
+    # Register auto class to save the custom code files.
+    if isinstance(config, PretrainedConfig):
+        config.__class__.register_for_auto_class()
+    if isinstance(tokenizer, PreTrainedTokenizerBase):
+        tokenizer.__class__.register_for_auto_class()
+    if isinstance(model, PreTrainedModel):
+        model.__class__.register_for_auto_class()
 
     model.lm_head = model.transformer.output_layer
     output_embedding_base_layer = model.transformer
     output_embedding_layer_name = "output_layer"
     model = prepare_model_for_training(
         model, 
+        training_args.finetuning_method,
         output_embedding_base_layer, 
         output_embedding_layer_name
     )
@@ -98,7 +120,9 @@ def train():
 
     callbacks = [LogCallback()]
 
-    trainer = Seq2SeqTrainer(
+    # trainer = Seq2SeqTrainer(
+    trainer = Seq2SeqTrainerForChatGLM(
+        finetuning_args=training_args, # finetuning_args is used in PeftTrainer
         model=model,
         args=training_args,
         train_dataset=dataset["train"],

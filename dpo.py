@@ -33,21 +33,22 @@ def train():
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        use_fast=False,
+        use_fast=model_args.use_fast_tokenizer,
         trust_remote_code=True,
-        model_max_length=data_args.model_max_length,
+        # model_max_length=data_args.model_max_length,
         cache_dir=model_args.cache_dir,
+        padding_side="left",
     )
-    tokenizer.padding_side = "left"
 
     dataset = preprocess_dataset(
-        data_args.data_path, tokenizer, data_args.model_max_length
+        tokenizer, training_args, data_args
     )
     # collator = PairwiseDataCollatorForChatGLM(
     #     tokenizer=tokenizer
     # )
     config = transformers.AutoConfig.from_pretrained(
         model_args.model_name_or_path,
+        trust_remote_code=True,
     )
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
@@ -65,7 +66,7 @@ def train():
         output_embedding_layer_name
     )
 
-    if training_args.use_lora:
+    if training_args.finetuning_method == "lora":
         # turn off adapters when serving as ref, no auxiliary ref model is needed
         ref_model = None 
 
@@ -81,7 +82,7 @@ def train():
         model = get_peft_model(model, peft_config)
         # model.print_trainable_parameters()
 
-    else: # freeze fine-tuning
+    elif training_args.finetuning_method == "freeze": # freeze fine-tuning
         ref_model = transformers.AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             trust_remote_code=True,
@@ -95,6 +96,8 @@ def train():
                 param.requires_grad_(False)
             else:
                 param.data = param.data.to(torch.float32)
+    else:
+        raise NotImplementedError(f"Unsupported fine-tuning method: {training_args.finetuning_method}")
     
     # print training arguments
     training_args_dict = training_args.to_dict()

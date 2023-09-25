@@ -1,7 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional, Dict, Literal
 from transformers import Seq2SeqTrainingArguments
 import torch
+import json
 
 @dataclass
 class ModelArguments:
@@ -28,6 +29,10 @@ class ModelArguments:
     double_quantization: Optional[bool] = field(
         default=True,
         metadata={"help": "Whether to use double quantization in int4 training or not."}
+    )
+    use_fast_tokenizer: Optional[bool] = field(
+        default=True,
+        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."}
     )
 
     def __post_init__(self):
@@ -105,6 +110,19 @@ class TrainingArguments(Seq2SeqTrainingArguments):
         default=0.1,
         metadata={"help": "The beta factor in DPO loss. Higher beta means less divergence from the initial policy."}
     )
+
+    def save_to_json(self, json_path: str) -> None:
+        """Saves the content of this instance in JSON format inside `json_path`."""
+        json_string = json.dumps(asdict(self), indent=2, sort_keys=True) + "\n"
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(json_string)
+
+    @classmethod
+    def load_from_json(cls, json_path: str):
+        """Creates an instance from the content of `json_path`."""
+        with open(json_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        return cls(**json.loads(text))
 
 
 def postprocess_training_args(

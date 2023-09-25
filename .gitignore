@@ -3,3 +3,5 @@ output*
 *.ipynb
 __pycache__/
 data/
+scripts/
+logs/

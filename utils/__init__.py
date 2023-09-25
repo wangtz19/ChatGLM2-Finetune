@@ -11,4 +11,5 @@ from .logging import get_logger
 from .ploting import plot_loss
 from .callbacks import LogCallback
 from .misc import count_parameters, prepare_model_for_training
-from .constant import *
+from .constants import *
+from .trainer import *
